@@ -10,6 +10,9 @@ string for one scene. Two implementations ship:
   (many local servers -- Ollama, llama-server -- don't implement it) and
   tolerates a missing API key. Pair with OPENAI_BASE_URL=http://localhost:11434/v1
   and an Ollama vision model like qwen2.5vl:7b for fully offline description.
+- OllamaVisionClient: Ollama's *native* `/api/chat` API (stdlib-only HTTP, no
+  new dependencies). Model routing is by name and defaults to qwen2.5vl:7b;
+  point OLLAMA_BASE_URL at any Ollama server (default http://localhost:11434).
 
 To add a provider (Anthropic, Gemini, ...): implement `describe_scene`,
 register it in `make_vision_client`, document it in README.
@@ -167,6 +170,39 @@ class LocalVisionClient(OpenAIVisionClient):
         )
 
 
+class OllamaVisionClient:
+    """Vision via Ollama's native `/api/chat` (stdlib-only, no new deps).
+
+    Images are sent as raw base64 in the `images` array; the model is routed
+    by name and defaults to qwen2.5vl:7b. Set OLLAMA_BASE_URL to reach a
+    remote Ollama server; defaults to http://localhost:11434.
+    """
+
+    name = "ollama"
+    default_model = "qwen2.5vl:7b"
+
+    def __init__(self, model: str | None = None, base_url: str | None = None):
+        from ..ollama import resolve_base_url
+
+        self._model = model or self.default_model
+        self._base_url = resolve_base_url(base_url)
+
+    def describe_scene(self, *, scene_id, start_s, end_s, frames, system, user) -> str:
+        from ..ollama import chat as ollama_chat
+
+        images = [
+            base64.b64encode(Path(fr.path).read_bytes()).decode("ascii") for fr in frames
+        ]
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user, "images": images},
+        ]
+        try:
+            return ollama_chat(self._base_url, self._model, messages)
+        except CleanroomError as e:
+            raise CleanroomError(f"Ollama vision failed for scene {scene_id}: {e}") from e
+
+
 def make_vision_client(settings: Settings) -> VisionClient:
     provider = settings.vision_provider
     if provider == "mock":
@@ -181,7 +217,12 @@ def make_vision_client(settings: Settings) -> VisionClient:
             model=settings.vision_model,
             base_url=os.environ.get("OPENAI_BASE_URL") or None,
         )
+    if provider == "ollama":
+        # 'gpt-4o' is the generic Settings default and meaningless for Ollama:
+        # route to Qwen2.5-VL unless the user explicitly set a model.
+        model = None if settings.vision_model == "gpt-4o" else settings.vision_model
+        return OllamaVisionClient(model=model)
     raise CleanroomError(
-        f"Unknown vision provider '{provider}'. Choices: mock, openai, local. "
+        f"Unknown vision provider '{provider}'. Choices: mock, openai, local, ollama. "
         "See describe/vision.py to add one."
     )

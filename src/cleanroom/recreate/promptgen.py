@@ -107,6 +107,34 @@ class LocalTextClient(OpenAITextClient):
         )
 
 
+class OllamaTextClient:
+    """Prompt planning via Ollama's native `/api/chat` (stdlib-only).
+
+    Defaults to qwen2.5:7b; set OLLAMA_BASE_URL for a remote Ollama server.
+    """
+
+    name = "ollama"
+    default_model = "qwen2.5:7b"
+
+    def __init__(self, model: str | None = None, base_url: str | None = None):
+        from ..ollama import resolve_base_url
+
+        self._model = model or self.default_model
+        self._base_url = resolve_base_url(base_url)
+
+    def complete(self, system: str, user: str) -> str:
+        from ..ollama import chat as ollama_chat
+
+        return ollama_chat(
+            self._base_url,
+            self._model,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+
+
 def make_text_client(settings: Settings) -> TextClient:
     if settings.text_provider == "mock":
         return MockTextClient()
@@ -114,8 +142,12 @@ def make_text_client(settings: Settings) -> TextClient:
         return OpenAITextClient(model=settings.text_model)
     if settings.text_provider == "local":
         return LocalTextClient(model=settings.text_model)
+    if settings.text_provider == "ollama":
+        # 'gpt-4o' is the generic Settings default and meaningless for Ollama.
+        model = None if settings.text_model == "gpt-4o" else settings.text_model
+        return OllamaTextClient(model=model)
     raise CleanroomError(
-        f"Unknown text provider '{settings.text_provider}'. Choices: mock, openai, local."
+        f"Unknown text provider '{settings.text_provider}'. Choices: mock, openai, local, ollama."
     )
 
 

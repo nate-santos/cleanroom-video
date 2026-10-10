@@ -87,6 +87,27 @@ llama-server -hf <Qwen2.5-VL-7B-Instruct-GGUF-repo> --port 8080
 # then OPENAI_BASE_URL=http://localhost:8080/v1 with provider=local
 ```
 
+**Native Ollama provider.** If you'd rather talk to Ollama's own API instead
+of its OpenAI-compatible endpoint, use `provider=ollama` (stdlib-only HTTP, no
+new dependencies). It routes to Qwen2.5-VL by default — no model env needed:
+
+```bash
+ollama pull qwen2.5vl:7b
+export CLEANROOM_VISION_PROVIDER=ollama   # -> qwen2.5vl:7b on localhost:11434
+export CLEANROOM_TEXT_PROVIDER=ollama     # -> qwen2.5:7b for the planner
+# OLLAMA_BASE_URL=http://other-host:11434  # optional: remote Ollama server
+```
+
+`CLEANROOM_VISION_MODEL` / `CLEANROOM_TEXT_MODEL` override the routed models;
+`OLLAMA_BASE_URL` overrides the server.
+
+**Free hosted endpoints (verified Oct 2026).** No keyless free Qwen2.5-VL
+endpoint could be verified: Pollinations now requires an API key (401 without
+one), and OpenRouter's Qwen2.5-VL is paid-only (its `:free` tier currently has
+no Qwen VL model). Any OpenAI-compatible free endpoint works via
+`provider=openai` + `OPENAI_BASE_URL` when one appears — no code changes
+needed. Until then, local Ollama is the free path.
+
 Why this works with no code changes: the describer already reduces video to
 sampled JPEG frames, so any multi-image vision model can do the job — native
 video input is a bonus, not a requirement. The `local` provider is identical
@@ -105,9 +126,10 @@ All via environment (see `.env.example`):
 
 | var | default | options |
 |---|---|---|
-| `CLEANROOM_VISION_PROVIDER` | `mock` | `mock`, `openai`, `local` (Ollama/llama-server via `OPENAI_BASE_URL`, no key needed) |
-| `CLEANROOM_VISION_MODEL` | `gpt-4o` | any vision-capable chat model (`qwen2.5vl:7b` for local) |
-| `CLEANROOM_TEXT_PROVIDER` | `mock` | `mock`, `openai`, `local` |
+| `CLEANROOM_VISION_PROVIDER` | `mock` | `mock`, `openai`, `local` (Ollama/llama-server via `OPENAI_BASE_URL`, no key needed), `ollama` (native `/api/chat`, routed to `qwen2.5vl:7b`) |
+| `CLEANROOM_VISION_MODEL` | `gpt-4o` | any vision-capable chat model (`qwen2.5vl:7b` for local/ollama) |
+| `CLEANROOM_TEXT_PROVIDER` | `mock` | `mock`, `openai`, `local`, `ollama` (routed to `qwen2.5:7b`) |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server for `provider=ollama` |
 | `CLEANROOM_VIDEO_PROVIDER` | `mock` | `mock` (ffmpeg placeholder clips); `veo`/`runway`/`sora` are stubbed for phase 1 |
 | `CLEANROOM_TRANSCRIBER` | `mock` | `mock`, `faster-whisper` (local) |
 | `CLEANROOM_WORKDIR` | `assets/work` | scratch dir for frames, clips, manifests |
