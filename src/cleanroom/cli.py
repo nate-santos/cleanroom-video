@@ -77,6 +77,10 @@ def run(
     settings = _settings()
     try:
         desc = describe_video(input, detail=detail, settings=settings)
+        rprint(
+            f"{len(desc.spec.scenes)} scenes, {desc.spec.shot_count} shots, "
+            f"{desc.frame_count} frames analyzed (detail={detail.value})."
+        )
         rec = recreate_from_spec(desc.spec_path, settings=settings, out_path=out)
     except CleanroomError as e:
         rprint(f"[red]Run failed:[/red] {e}")

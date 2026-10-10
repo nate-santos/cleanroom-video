@@ -92,7 +92,9 @@ def describe_video(
             transcript_segments = make_transcriber(settings).transcribe(wav)
         except CleanroomError as e:
             # Transcription is best-effort; description proceeds without it.
-            print(f"Warning: audio/transcription skipped ({e})")
+            # Keep the warning to one line -- the full ffmpeg stderr is noise here.
+            first_line = str(e).strip().splitlines()[0][:160]
+            print(f"Warning: audio/transcription skipped ({first_line})")
 
     total = 0
     scene_specs: list[SceneSpec] = []
