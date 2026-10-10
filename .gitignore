@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+
+# Env / secrets
+.env
+
+# Working files and outputs (specs you want to keep go in examples/ or a chosen dir)
+assets/work/
+*.mp4
+*.wav
+!examples/*.mp4
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# ffmpeg concat working files
+concat_list.txt

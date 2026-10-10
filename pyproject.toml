@@ -1,0 +1,32 @@
+[project]
+name = "cleanroom-video"
+version = "0.1.0"
+description = "Two-LLM clean-room recreation of video: a describer LLM writes a detailed spec from the source, a second LLM recreates the video from the spec alone."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Nate" }]
+dependencies = [
+    "typer>=0.9",
+    "pydantic>=2.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.0"]
+whisper = ["faster-whisper>=1.0"]
+dev = ["pytest>=8.0"]
+all = ["openai>=1.0", "faster-whisper>=1.0", "pytest>=8.0"]
+
+[project.scripts]
+cleanroom = "cleanroom.cli:app"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
