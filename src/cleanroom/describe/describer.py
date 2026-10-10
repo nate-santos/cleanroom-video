@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from ..config import DETAIL_PROFILES, DetailLevel, Settings
 from ..models.spec import SceneSpec, VideoSpec
-from ..utils import CleanroomError, ensure_dir
+from ..utils import CleanroomError, ensure_dir, extract_json
 from . import prompts
 from .extractor import FrameRef, detect_scenes, extract_audio, extract_frames, probe_duration
 from .transcribe import make_transcriber, transcript_for_range
@@ -45,8 +45,8 @@ def _subsample(frames: list[FrameRef], cap: int) -> list[FrameRef]:
 
 def _parse_scene(raw: str, scene_id: str, workdir: Path) -> SceneSpec:
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as e:
+        data = json.loads(extract_json(raw))
+    except (json.JSONDecodeError, CleanroomError) as e:
         debug = workdir / f"{scene_id}.raw.txt"
         debug.write_text(raw)
         raise CleanroomError(

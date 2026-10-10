@@ -13,7 +13,7 @@ from typing import Protocol
 
 from ..config import Settings
 from ..models.spec import SceneSpec, ShotSpec, VideoSpec
-from ..utils import CleanroomError
+from ..utils import CleanroomError, extract_json
 from . import prompts
 
 
@@ -51,7 +51,13 @@ class OpenAITextClient:
 
     name = "openai"
 
-    def __init__(self, model: str, base_url: str | None = None):
+    def __init__(
+        self,
+        model: str,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        json_mode: bool = True,
+    ):
         try:
             from openai import OpenAI
         except ImportError as e:
@@ -59,25 +65,46 @@ class OpenAITextClient:
                 "The 'openai' package is not installed. Run: pip install 'cleanroom-video[openai]'"
             ) from e
         self._client = OpenAI(
-            api_key=os.environ.get("OPENAI_API_KEY"),
+            api_key=api_key or os.environ.get("OPENAI_API_KEY"),
             base_url=base_url or os.environ.get("OPENAI_BASE_URL") or None,
         )
         self._model = model
+        self._json_mode = json_mode
 
     def complete(self, system: str, user: str) -> str:
+        kwargs: dict = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "max_tokens": 1024,
+        }
+        if self._json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
         try:
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=1024,
-            )
+            resp = self._client.chat.completions.create(**kwargs)
         except Exception as e:
             raise CleanroomError(f"Text API call failed: {e}") from e
         return (resp.choices[0].message.content or "").strip()
+
+
+class LocalTextClient(OpenAITextClient):
+    """Text completions via a local OpenAI-compatible server (Ollama, llama-server).
+
+    No `response_format` (often unimplemented locally), no API key required.
+    """
+
+    name = "local"
+
+    def __init__(self, model: str, base_url: str | None = None):
+        # Local servers ignore the key; the OpenAI client just requires one set.
+        super().__init__(
+            model,
+            api_key=os.environ.get("OPENAI_API_KEY") or "sk-local",
+            base_url=base_url,
+            json_mode=False,
+        )
 
 
 def make_text_client(settings: Settings) -> TextClient:
@@ -85,8 +112,10 @@ def make_text_client(settings: Settings) -> TextClient:
         return MockTextClient()
     if settings.text_provider == "openai":
         return OpenAITextClient(model=settings.text_model)
+    if settings.text_provider == "local":
+        return LocalTextClient(model=settings.text_model)
     raise CleanroomError(
-        f"Unknown text provider '{settings.text_provider}'. Choices: mock, openai."
+        f"Unknown text provider '{settings.text_provider}'. Choices: mock, openai, local."
     )
 
 
@@ -139,9 +168,9 @@ def plan_shot(
     )
     raw = client.complete(system, user)
     try:
-        data = json.loads(raw)
+        data = json.loads(extract_json(raw))
         prompt, negative = data["prompt"], data.get("negative_prompt", "")
-    except (json.JSONDecodeError, KeyError, TypeError) as e:
+    except (json.JSONDecodeError, KeyError, TypeError, CleanroomError) as e:
         raise CleanroomError(
             f"Prompt planner returned unusable output for shot {shot.id}: {e}\nRaw: {raw[:500]}"
         ) from e

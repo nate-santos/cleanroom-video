@@ -6,6 +6,10 @@ string for one scene. Two implementations ship:
 - MockVisionClient: deterministic, offline. Powers `cleanroom demo` and tests.
 - OpenAIVisionClient: any OpenAI-compatible chat-completions endpoint with a
   vision-capable model (OpenAI, or a local server via OPENAI_BASE_URL).
+- LocalVisionClient: same wire format, but skips `response_format=json_object`
+  (many local servers -- Ollama, llama-server -- don't implement it) and
+  tolerates a missing API key. Pair with OPENAI_BASE_URL=http://localhost:11434/v1
+  and an Ollama vision model like qwen2.5vl:7b for fully offline description.
 
 To add a provider (Anthropic, Gemini, ...): implement `describe_scene`,
 register it in `make_vision_client`, document it in README.
@@ -92,7 +96,13 @@ class OpenAIVisionClient:
 
     name = "openai"
 
-    def __init__(self, model: str, api_key: str | None = None, base_url: str | None = None):
+    def __init__(
+        self,
+        model: str,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        json_mode: bool = True,
+    ):
         try:
             from openai import OpenAI
         except ImportError as e:
@@ -104,6 +114,7 @@ class OpenAIVisionClient:
             base_url=base_url or os.environ.get("OPENAI_BASE_URL") or None,
         )
         self._model = model
+        self._json_mode = json_mode
 
     def describe_scene(self, *, scene_id, start_s, end_s, frames, system, user) -> str:
         content: list[dict] = [{"type": "text", "text": user}]
@@ -118,22 +129,42 @@ class OpenAIVisionClient:
                     },
                 }
             )
+        kwargs: dict = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": content},
+            ],
+            "max_tokens": 8192,
+        }
+        if self._json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
         try:
-            resp = self._client.chat.completions.create(
-                model=self._model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": content},
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=8192,
-            )
+            resp = self._client.chat.completions.create(**kwargs)
         except Exception as e:
             raise CleanroomError(f"Vision API call failed for scene {scene_id}: {e}") from e
         text = (resp.choices[0].message.content or "").strip()
         if not text:
             raise CleanroomError(f"Vision API returned empty response for scene {scene_id}")
         return text
+
+
+class LocalVisionClient(OpenAIVisionClient):
+    """Vision via a local OpenAI-compatible server (Ollama, llama-server).
+
+    Identical wire format, but no `response_format` (often unimplemented
+    locally) and no API key required -- local servers ignore it.
+    """
+
+    name = "local"
+
+    def __init__(self, model: str, api_key: str | None = None, base_url: str | None = None):
+        super().__init__(
+            model,
+            api_key=api_key or os.environ.get("OPENAI_API_KEY") or "sk-local",
+            base_url=base_url,
+            json_mode=False,
+        )
 
 
 def make_vision_client(settings: Settings) -> VisionClient:
@@ -145,7 +176,12 @@ def make_vision_client(settings: Settings) -> VisionClient:
             model=settings.vision_model,
             base_url=os.environ.get("OPENAI_BASE_URL") or None,
         )
+    if provider == "local":
+        return LocalVisionClient(
+            model=settings.vision_model,
+            base_url=os.environ.get("OPENAI_BASE_URL") or None,
+        )
     raise CleanroomError(
-        f"Unknown vision provider '{provider}'. Choices: mock, openai. "
+        f"Unknown vision provider '{provider}'. Choices: mock, openai, local. "
         "See describe/vision.py to add one."
     )

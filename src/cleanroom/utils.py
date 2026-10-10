@@ -47,3 +47,18 @@ def sanitize_drawtext(text: str, max_len: int = 120) -> str:
     text = text.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
     text = re.sub(r"\s+", " ", text).strip()
     return text[:max_len]
+
+
+def extract_json(text: str) -> str:
+    """Pull a JSON object out of raw LLM output.
+
+    Strips markdown fences (```json ... ```) that local models love to add,
+    then returns the substring from the first '{' to the last '}'.
+    Raises CleanroomError if no object is found.
+    """
+    cleaned = re.sub(r"^```(?:json)?\s*", "", text.strip())
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start == -1 or end <= start:
+        raise CleanroomError(f"No JSON object found in model output: {text[:200]!r}")
+    return cleaned[start : end + 1]

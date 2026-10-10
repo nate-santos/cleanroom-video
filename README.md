@@ -55,15 +55,59 @@ cleanroom run myvideo.mp4 --detail standard -o out.mp4   # both stages at once
 
 Higher detail = better recreation fidelity = more vision-API cost. `brief` is for triage; `forensic` is for the shots that matter.
 
+## Running fully offline (no API keys)
+
+All LLM calls in this project are plain OpenAI-compatible HTTP. Point them at
+a local server and the whole pipeline runs offline — no accounts, no keys.
+
+**Option A — Ollama (easiest).** Install from https://ollama.com, then:
+
+```bash
+ollama pull qwen2.5vl:7b      # vision model for LLM #1 (the describer)
+ollama pull qwen2.5:7b         # text model for LLM #2 (the prompt planner)
+```
+
+Qwen2.5-VL is open-weight (Apache 2.0) with native video understanding; the
+7B Q4 quant is ~5GB, so it fits comfortably on an 8GB GPU. (`qwen2.5vl:3b` is
+the lighter/faster alternative.)
+
+```bash
+export CLEANROOM_VISION_PROVIDER=local
+export CLEANROOM_VISION_MODEL=qwen2.5vl:7b
+export CLEANROOM_TEXT_PROVIDER=local
+export CLEANROOM_TEXT_MODEL=qwen2.5:7b
+export OPENAI_BASE_URL=http://localhost:11434/v1
+cleanroom demo   # then real videos, fully offline
+```
+
+**Option B — llama-server.** For more control (quant choice, GPU backends):
+
+```bash
+llama-server -hf <Qwen2.5-VL-7B-Instruct-GGUF-repo> --port 8080
+# then OPENAI_BASE_URL=http://localhost:8080/v1 with provider=local
+```
+
+Why this works with no code changes: the describer already reduces video to
+sampled JPEG frames, so any multi-image vision model can do the job — native
+video input is a bonus, not a requirement. The `local` provider is identical
+to `openai` on the wire except it skips `response_format=json_object` (many
+local servers don't implement it) and doesn't need an API key; JSON parsing
+tolerates the markdown fences local models like to add.
+
+Honest trade-offs: a local 7B sees less fine detail than a frontier vision
+model — compensate with `--detail deep` (more frames, more fields). The one
+piece that stays cloud-bound for now is stage-2 *rendering*: local video
+generation (Wan, CogVideoX) is on the ROADMAP, not implemented.
+
 ## Configuration
 
 All via environment (see `.env.example`):
 
 | var | default | options |
 |---|---|---|
-| `CLEANROOM_VISION_PROVIDER` | `mock` | `mock`, `openai` (any OpenAI-compatible endpoint via `OPENAI_BASE_URL`) |
-| `CLEANROOM_VISION_MODEL` | `gpt-4o` | any vision-capable chat model |
-| `CLEANROOM_TEXT_PROVIDER` | `mock` | `mock`, `openai` |
+| `CLEANROOM_VISION_PROVIDER` | `mock` | `mock`, `openai`, `local` (Ollama/llama-server via `OPENAI_BASE_URL`, no key needed) |
+| `CLEANROOM_VISION_MODEL` | `gpt-4o` | any vision-capable chat model (`qwen2.5vl:7b` for local) |
+| `CLEANROOM_TEXT_PROVIDER` | `mock` | `mock`, `openai`, `local` |
 | `CLEANROOM_VIDEO_PROVIDER` | `mock` | `mock` (ffmpeg placeholder clips); `veo`/`runway`/`sora` are stubbed for phase 1 |
 | `CLEANROOM_TRANSCRIBER` | `mock` | `mock`, `faster-whisper` (local) |
 | `CLEANROOM_WORKDIR` | `assets/work` | scratch dir for frames, clips, manifests |
